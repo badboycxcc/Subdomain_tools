@@ -61,7 +61,11 @@ jobs:
           set -euo pipefail
           file="subdomain-tools-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
           cd build
-          sha1sum "${file}" > "${file}.sha1"
+          if command -v sha1sum >/dev/null 2>&1; then
+            sha1sum "${file}" > "${file}.sha1"
+          else
+            shasum -a 1 "${file}" > "${file}.sha1"
+          fi
           cat "${file}.sha1"
 
       - name: Upload Artifact
