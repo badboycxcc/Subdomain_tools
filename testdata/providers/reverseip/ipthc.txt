@@ -1,0 +1,3 @@
+www.example.com
+api.example.com 104.21.1.1
+invalidline

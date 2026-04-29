@@ -1,0 +1,3 @@
+{
+  "subdomains": ["www", "api.example.com", "  blog  ", ""]
+}
