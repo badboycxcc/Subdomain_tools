@@ -49,3 +49,50 @@ func TestParseURLScanReverseIPJSON(t *testing.T) {
 		t.Fatalf("expected 3 records, got %d: %v", len(out), out)
 	}
 }
+
+func TestParseViewDNSReverseIPJSON(t *testing.T) {
+	data := []byte(`{
+		"query":{"tool":"reverseip_PRO","host":"8.8.8.8"},
+		"response":{
+			"domain_count":"3",
+			"domains":[
+				{"name":"a.example.com","last_resolved":"2024-09-25"},
+				{"name":"a.example.com","last_resolved":"2024-09-26"},
+				{"name":"x.other.com","last_resolved":"2024-09-27"}
+			]
+		}
+	}`)
+	out, err := parseViewDNSReverseIPJSON(data)
+	if err != nil {
+		t.Fatalf("parse viewdns reverseip failed: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 records, got %d: %v", len(out), out)
+	}
+}
+
+func TestParseRapidDNSReverseIPJSON(t *testing.T) {
+	data := []byte(`{
+		"status":200,
+		"msg":"ok",
+		"data":{
+			"total":"3",
+			"status":"ok",
+			"data":[
+				{"subdomain":"a.example.com"},
+				{"subdomain":"a.example.com"},
+				{"subdomain":"x.other.com"}
+			]
+		}
+	}`)
+	out, total, err := parseRapidDNSReverseIPJSON(data)
+	if err != nil {
+		t.Fatalf("parse rapiddns reverse ip failed: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("expected total=3, got %d", total)
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 records, got %d: %v", len(out), out)
+	}
+}

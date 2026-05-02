@@ -133,3 +133,32 @@ func TestParseRapidDNSJSON(t *testing.T) {
 		t.Fatalf("expected rapiddns ip records, got err=%v data=%+v", err, records)
 	}
 }
+
+func TestParseViewDNSSubdomainsJSONRecords(t *testing.T) {
+	data := []byte(`{
+		"query":{"tool":"subdomains_PRO","domain":"example.com"},
+		"response":{
+			"subdomain_count":"3",
+			"total_pages":"1",
+			"current_page":"1",
+			"subdomains":[
+				{"name":"www.example.com","ips":["1.1.1.1"],"last_resolved":"2025-01-01"},
+				{"name":"api.example.com","ips":[],"last_resolved":null},
+				{"name":"x.other.com","ips":["2.2.2.2"],"last_resolved":"2025-01-01"}
+			]
+		}
+	}`)
+	records, totalPages, err := parseViewDNSSubdomainsJSONRecords(data, "example.com")
+	if err != nil {
+		t.Fatalf("parse viewdns subdomains failed: %v", err)
+	}
+	if totalPages != 1 {
+		t.Fatalf("expected total_pages=1, got %d", totalPages)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d: %+v", len(records), records)
+	}
+	if records[0].IP != "1.1.1.1" {
+		t.Fatalf("expected first ip=1.1.1.1, got %s", records[0].IP)
+	}
+}

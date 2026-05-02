@@ -37,6 +37,9 @@ go run ./cmd/subdomain-tools
   - API: `GET https://rapiddns.io/api/search/{domain}?page=1&pagesize=100&search_type=subdomain`
   - Auth header: `X-API-KEY: rdns_xxx`
   - Extracted fields: `data.data[].subdomain`
+- `viewdns`:
+  - API: `GET https://api.viewdns.info/subdomains/?domain={domain}&apikey={key}&page=1&output=json`
+  - Extracted fields: `response.subdomains[].name` (and optional `ips[]`)
 
 ### Reverse IP
 
@@ -48,6 +51,13 @@ go run ./cmd/subdomain-tools
 - `urlscan`:
   - API: `GET https://urlscan.io/api/v1/search/?q=ip:{ip}`
   - Extracted fields: `results[].task.domain` and `results[].page.domain`
+- `rapiddns`:
+  - API: `GET https://rapiddns.io/api/search/{ip}?page=1&pagesize=100&search_type=ip`
+  - Auth header: `X-API-KEY: rdns_xxx`
+  - Extracted fields: `data.data[].subdomain`
+- `viewdns`:
+  - API: `GET https://api.viewdns.info/reverseip/?host={ip}&apikey={key}&output=json`
+  - Extracted fields: `response.domains[].name`
 
 ### Web Probe / Tech Detection
 
@@ -61,7 +71,7 @@ go run ./cmd/subdomain-tools
 - `Subdomains`: supports `开始全流程` (pipeline mode)
 - `Reverse IP`: input IP, start/cancel task
 - `Results`: filter + export
-- `Settings`: RapidDNS API key, DNS resolvers, hosts collision/web probe switches, timeout, concurrency, retries
+- `Settings`: RapidDNS API key, ViewDNS API key, DNS resolvers, hosts collision/web probe switches, timeout, concurrency, retries
 - `Logs`: provider logs and errors
 
 ## Tests

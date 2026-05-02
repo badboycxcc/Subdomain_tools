@@ -115,6 +115,11 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 	rStartBtn := widget.NewButton("开始反查", nil)
 	rCancelBtn := widget.NewButton("取消", nil)
 	rCancelBtn.Disable()
+	reverseResultsArea := widget.NewMultiLineEntry()
+	reverseResultsArea.Wrapping = fyne.TextWrapWord
+	reverseResultsArea.Scroll = fyne.ScrollVerticalOnly
+	reverseResultsArea.TextStyle = fyne.TextStyle{}
+	reverseResultsArea.SetMinRowsVisible(20)
 
 	reverseTab := container.NewBorder(
 		container.NewVBox(
@@ -123,7 +128,7 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 			container.NewHBox(rStartBtn, rCancelBtn),
 		),
 		nil, nil, nil,
-		widget.NewLabel("执行后结果会同步更新到 Results 标签"),
+		reverseResultsArea,
 	)
 
 	// Results tab
@@ -163,6 +168,8 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 	retryEntry.SetText(strconv.Itoa(aw.settings.MaxRetries))
 	rapidDNSKeyEntry := widget.NewPasswordEntry()
 	rapidDNSKeyEntry.SetText(strings.TrimSpace(aw.settings.RapidDNSAPIKey))
+	viewDNSKeyEntry := widget.NewPasswordEntry()
+	viewDNSKeyEntry.SetText(strings.TrimSpace(aw.settings.ViewDNSAPIKey))
 	dnsResolversEntry := widget.NewEntry()
 	dnsResolversEntry.SetPlaceHolder("1.1.1.1:53,8.8.8.8:53")
 	dnsResolversEntry.SetText(strings.Join(aw.settings.DNSResolvers, ","))
@@ -178,6 +185,7 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 			widget.NewFormItem("最大并发", concurrencyEntry),
 			widget.NewFormItem("重试次数", retryEntry),
 			widget.NewFormItem("RapidDNS API Key", rapidDNSKeyEntry),
+			widget.NewFormItem("ViewDNS API Key", viewDNSKeyEntry),
 			widget.NewFormItem("DNS 解析器(逗号分隔)", dnsResolversEntry),
 			widget.NewFormItem("启用 hosts 碰撞", hostsCollisionCheck),
 			widget.NewFormItem("启用 Web 指纹探测", webProbeCheck),
@@ -219,7 +227,11 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 			return
 		}
 		aw.state.Store.Clear()
-		resultsArea.SetText("")
+		if taskType == model.TaskReverseIP {
+			reverseResultsArea.SetText("")
+		} else {
+			resultsArea.SetText("")
+		}
 		refreshResults("")
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -299,7 +311,7 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 			for evt := range events {
 				evtCopy := evt
 				fyne.Do(func() {
-					aw.consumeEvent(evtCopy, statusLabel, counterLabel, resultsArea, filterEntry.Text, refreshResults, refreshLogs)
+					aw.consumeEvent(evtCopy, statusLabel, counterLabel, resultsArea, reverseResultsArea, filterEntry.Text, refreshResults, refreshLogs)
 					if evtCopy.Type == collect.EventTaskDone {
 						subStartBtn.Enable()
 						pipelineStartBtn.Enable()
@@ -353,6 +365,7 @@ func (aw *AppWindow) buildTabs() fyne.CanvasObject {
 		aw.settings.MaxConcurrency = concurrency
 		aw.settings.MaxRetries = retry
 		aw.settings.RapidDNSAPIKey = strings.TrimSpace(rapidDNSKeyEntry.Text)
+		aw.settings.ViewDNSAPIKey = strings.TrimSpace(viewDNSKeyEntry.Text)
 		aw.settings.DNSResolvers = parseDNSResolversInput(dnsResolversEntry.Text)
 		aw.settings.EnableHostsCollision = hostsCollisionCheck.Checked
 		aw.settings.EnableWebProbe = webProbeCheck.Checked
@@ -412,7 +425,8 @@ func (aw *AppWindow) consumeEvent(
 	evt collect.Event,
 	statusLabel *widget.Label,
 	counterLabel *widget.Label,
-	resultsArea *widget.Entry,
+	subResultsArea *widget.Entry,
+	reverseResultsArea *widget.Entry,
 	filterKeyword string,
 	refreshResults func(string),
 	refreshLogs func(),
@@ -442,9 +456,22 @@ func (aw *AppWindow) consumeEvent(
 				Message: logMsg,
 			})
 		}
-		// Subdomains 输出区只展示去重结果，详细过程统一看 Logs。
-		if evt.IsNew && (aw.state.CurrentTask == model.TaskSubdomain || evt.TaskType == model.TaskWebProbe) {
-			resultsArea.SetText(resultsArea.Text + evt.Record.Value + "\n")
+		// 当前任务结果在对应页实时展示，详细过程统一看 Logs。
+		if evt.IsNew {
+			switch aw.state.CurrentTask {
+			case model.TaskSubdomain:
+				if evt.TaskType == model.TaskSubdomain {
+					subResultsArea.SetText(subResultsArea.Text + evt.Record.Value + "\n")
+				}
+			case model.TaskPipeline:
+				if evt.TaskType == model.TaskPipeline || evt.TaskType == model.TaskWebProbe {
+					subResultsArea.SetText(subResultsArea.Text + evt.Record.Value + "\n")
+				}
+			case model.TaskReverseIP:
+				if evt.TaskType == model.TaskReverseIP {
+					reverseResultsArea.SetText(reverseResultsArea.Text + evt.Record.Value + "\n")
+				}
+			}
 		}
 	case collect.EventProviderDone:
 		ps := aw.state.ProviderState[evt.Provider]
@@ -510,15 +537,25 @@ func (aw *AppWindow) buildSubdomainProviders(client *http.Client) []providers.Su
 	if strings.TrimSpace(aw.settings.RapidDNSAPIKey) != "" {
 		ps = append(ps, subdomains.NewRapidDNSProvider(client, aw.settings))
 	}
+	if strings.TrimSpace(aw.settings.ViewDNSAPIKey) != "" {
+		ps = append(ps, subdomains.NewViewDNSProvider(client, aw.settings))
+	}
 	return ps
 }
 
 func (aw *AppWindow) buildReverseIPProviders(client *http.Client) []providers.ReverseIPProvider {
-	return []providers.ReverseIPProvider{
+	ps := []providers.ReverseIPProvider{
 		reverseip.NewIPTHCProvider(client, aw.settings),
 		reverseip.NewHackerTargetProvider(client, aw.settings),
 		reverseip.NewURLScanProvider(client, aw.settings),
 	}
+	if strings.TrimSpace(aw.settings.RapidDNSAPIKey) != "" {
+		ps = append(ps, reverseip.NewRapidDNSProvider(client, aw.settings))
+	}
+	if strings.TrimSpace(aw.settings.ViewDNSAPIKey) != "" {
+		ps = append(ps, reverseip.NewViewDNSProvider(client, aw.settings))
+	}
+	return ps
 }
 
 func (aw *AppWindow) buildHostIPProviders(client *http.Client) []domainips.HostIPProvider {

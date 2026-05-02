@@ -15,6 +15,7 @@ type ProviderRateLimit struct {
 type Settings struct {
 	ChaosAPIKey          string                       `json:"chaos_api_key"`
 	RapidDNSAPIKey       string                       `json:"rapid_dns_api_key"`
+	ViewDNSAPIKey        string                       `json:"viewdns_api_key"`
 	DNSResolvers         []string                     `json:"dns_resolvers"`
 	EnableHostsCollision bool                         `json:"enable_hosts_collision"`
 	EnableWebProbe       bool                         `json:"enable_web_probe"`
@@ -40,6 +41,7 @@ func DefaultSettings() Settings {
 			"urlscan":         {RequestsPerSecond: 1},
 			"myssl":           {RequestsPerSecond: 1},
 			"rapiddns":        {RequestsPerSecond: 1},
+			"viewdns":         {RequestsPerSecond: 1},
 			"hackertarget":    {RequestsPerSecond: 1},
 		},
 	}
