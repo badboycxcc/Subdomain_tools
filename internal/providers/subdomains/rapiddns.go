@@ -110,22 +110,48 @@ func parseRapidDNSJSON(body []byte, rootDomain string) ([]string, int, error) {
 
 func parseRapidDNSJSONRecords(body []byte, rootDomain string) ([]providers.SubdomainRecord, int, error) {
 	var resp struct {
-		Data struct {
-			Total json.RawMessage `json:"total"`
-			Data  []struct {
-				Subdomain string `json:"subdomain"`
-				Value     string `json:"value"`
-			} `json:"data"`
-		} `json:"data"`
+		Status int             `json:"status"`
+		Msg    string          `json:"msg"`
+		Data   json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, 0, err
 	}
+	if len(resp.Data) == 0 || string(resp.Data) == "null" {
+		if strings.TrimSpace(resp.Msg) != "" {
+			return nil, 0, fmt.Errorf("rapiddns response: %s", strings.TrimSpace(resp.Msg))
+		}
+		return nil, 0, nil
+	}
+	// RapidDNS 在错误场景可能返回 data 为字符串而非对象。
+	if len(resp.Data) > 0 && resp.Data[0] == '"' {
+		var dataMsg string
+		if err := json.Unmarshal(resp.Data, &dataMsg); err == nil {
+			msg := strings.TrimSpace(dataMsg)
+			if msg == "" {
+				msg = strings.TrimSpace(resp.Msg)
+			}
+			if msg != "" {
+				return nil, 0, fmt.Errorf("rapiddns response: %s", msg)
+			}
+			return nil, 0, fmt.Errorf("rapiddns response data format invalid")
+		}
+	}
 
-	total := parseRapidDNSTotal(resp.Data.Total)
+	var payload struct {
+		Total json.RawMessage `json:"total"`
+		Data  []struct {
+			Subdomain string `json:"subdomain"`
+			Value     string `json:"value"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Data, &payload); err != nil {
+		return nil, 0, err
+	}
+	total := parseRapidDNSTotal(payload.Total)
 	root := strings.ToLower(strings.TrimSpace(rootDomain))
-	out := make([]providers.SubdomainRecord, 0, len(resp.Data.Data))
-	for _, item := range resp.Data.Data {
+	out := make([]providers.SubdomainRecord, 0, len(payload.Data))
+	for _, item := range payload.Data {
 		host := normalizeHost(item.Subdomain)
 		if host == "" {
 			continue

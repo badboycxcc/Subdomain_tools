@@ -96,3 +96,11 @@ func TestParseRapidDNSReverseIPJSON(t *testing.T) {
 		t.Fatalf("expected 2 records, got %d: %v", len(out), out)
 	}
 }
+
+func TestParseRapidDNSReverseIPJSON_DataStringError(t *testing.T) {
+	data := []byte(`{"status":403,"msg":"forbidden","data":"invalid api key"}`)
+	_, _, err := parseRapidDNSReverseIPJSON(data)
+	if err == nil {
+		t.Fatalf("expected error when rapiddns data is string")
+	}
+}

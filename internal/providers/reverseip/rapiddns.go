@@ -91,21 +91,47 @@ func (p *RapidDNSProvider) CollectDomainsByIP(ctx context.Context, ip string) ([
 
 func parseRapidDNSReverseIPJSON(body []byte) ([]string, int, error) {
 	var resp struct {
-		Data struct {
-			Total json.RawMessage `json:"total"`
-			Data  []struct {
-				Subdomain string `json:"subdomain"`
-			} `json:"data"`
-		} `json:"data"`
+		Status int             `json:"status"`
+		Msg    string          `json:"msg"`
+		Data   json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, 0, err
 	}
+	if len(resp.Data) == 0 || string(resp.Data) == "null" {
+		if strings.TrimSpace(resp.Msg) != "" {
+			return nil, 0, fmt.Errorf("rapiddns response: %s", strings.TrimSpace(resp.Msg))
+		}
+		return nil, 0, nil
+	}
+	// RapidDNS 在错误场景可能返回 data 为字符串而非对象。
+	if len(resp.Data) > 0 && resp.Data[0] == '"' {
+		var dataMsg string
+		if err := json.Unmarshal(resp.Data, &dataMsg); err == nil {
+			msg := strings.TrimSpace(dataMsg)
+			if msg == "" {
+				msg = strings.TrimSpace(resp.Msg)
+			}
+			if msg != "" {
+				return nil, 0, fmt.Errorf("rapiddns response: %s", msg)
+			}
+			return nil, 0, fmt.Errorf("rapiddns response data format invalid")
+		}
+	}
 
-	total := parseRapidDNSTotal(resp.Data.Total)
-	out := make([]string, 0, len(resp.Data.Data))
+	var payload struct {
+		Total json.RawMessage `json:"total"`
+		Data  []struct {
+			Subdomain string `json:"subdomain"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Data, &payload); err != nil {
+		return nil, 0, err
+	}
+	total := parseRapidDNSTotal(payload.Total)
+	out := make([]string, 0, len(payload.Data))
 	seen := map[string]struct{}{}
-	for _, item := range resp.Data.Data {
+	for _, item := range payload.Data {
 		host := subdomains.NormalizeForReverseIP(item.Subdomain)
 		if host == "" {
 			continue

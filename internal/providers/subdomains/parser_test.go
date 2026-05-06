@@ -134,6 +134,14 @@ func TestParseRapidDNSJSON(t *testing.T) {
 	}
 }
 
+func TestParseRapidDNSJSONRecords_DataStringError(t *testing.T) {
+	data := []byte(`{"status":403,"msg":"forbidden","data":"insufficient permissions"}`)
+	_, _, err := parseRapidDNSJSONRecords(data, "example.com")
+	if err == nil {
+		t.Fatalf("expected error when rapiddns data is string")
+	}
+}
+
 func TestParseViewDNSSubdomainsJSONRecords(t *testing.T) {
 	data := []byte(`{
 		"query":{"tool":"subdomains_PRO","domain":"example.com"},
