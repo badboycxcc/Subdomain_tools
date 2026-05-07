@@ -349,16 +349,25 @@ func (o *Orchestrator) collectSubdomains(
 			defer func() { <-sem }()
 			start := time.Now()
 			events <- Event{Type: EventLog, Time: time.Now(), TaskType: model.TaskPipeline, Provider: p.Name(), Message: fmt.Sprintf("%s 开始调用：query=%s", p.Name(), rootDomain)}
+			pctx := providers.WithProviderLog(ctx, func(message string) {
+				events <- Event{
+					Type:     EventLog,
+					Time:     time.Now(),
+					TaskType: model.TaskPipeline,
+					Provider: p.Name(),
+					Message:  fmt.Sprintf("%s 详细：%s", p.Name(), message),
+				}
+			})
 			records := make([]providers.SubdomainRecord, 0, 64)
 			if rp, ok := p.(providers.SubdomainRecordProvider); ok {
-				rs, err := rp.CollectSubdomainRecords(ctx, rootDomain)
+				rs, err := rp.CollectSubdomainRecords(pctx, rootDomain)
 				if err != nil {
 					events <- Event{Type: EventLog, Time: time.Now(), TaskType: model.TaskPipeline, Provider: p.Name(), Message: fmt.Sprintf("%s 查询失败: %v", p.Name(), err), Err: err}
 					return
 				}
 				records = rs
 			} else {
-				values, err := p.CollectSubdomains(ctx, rootDomain)
+				values, err := p.CollectSubdomains(pctx, rootDomain)
 				if err != nil {
 					events <- Event{Type: EventLog, Time: time.Now(), TaskType: model.TaskPipeline, Provider: p.Name(), Message: fmt.Sprintf("%s 查询失败: %v", p.Name(), err), Err: err}
 					return
@@ -399,6 +408,15 @@ func (o *Orchestrator) collectSubdomains(
 				TaskType: model.TaskPipeline,
 				Provider: p.Name(),
 				Message:  fmt.Sprintf("%s 子域名获取 %d 条，新增 %d 条，累计去重 %d 条，API查询IP新增 %d 条，耗时 %s，样例 %s", p.Name(), raw, added, total, apiIPCnt, time.Since(start).Round(time.Millisecond), sampleSubdomainHosts(records, 3)),
+			}
+			if raw == 0 && (p.Name() == "rapiddns" || p.Name() == "viewdns") {
+				events <- Event{
+					Type:     EventLog,
+					Time:     time.Now(),
+					TaskType: model.TaskPipeline,
+					Provider: p.Name(),
+					Message:  fmt.Sprintf("%s 返回 0 条：请求成功且解析成功，当前数据源未命中该域名", p.Name()),
+				}
 			}
 			if p.Name() == "myssl" && raw == 0 {
 				events <- Event{

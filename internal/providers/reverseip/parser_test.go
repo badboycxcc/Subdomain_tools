@@ -104,3 +104,33 @@ func TestParseRapidDNSReverseIPJSON_DataStringError(t *testing.T) {
 		t.Fatalf("expected error when rapiddns data is string")
 	}
 }
+
+func TestParseRapidDNSReverseIPJSON_StatusString(t *testing.T) {
+	data := []byte(`{
+		"status":"200",
+		"msg":"ok",
+		"data":{"total":"1","data":[{"subdomain":"a.example.com"}]}
+	}`)
+	out, total, err := parseRapidDNSReverseIPJSON(data)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if total != 1 || len(out) != 1 {
+		t.Fatalf("unexpected parse result total=%d len=%d", total, len(out))
+	}
+}
+
+func TestParseRapidDNSReverseIPJSON_NestedDataStringOk(t *testing.T) {
+	data := []byte(`{
+		"status":"200",
+		"msg":"ok",
+		"data":{"total":"0","status":"ok","data":"ok"}
+	}`)
+	out, total, err := parseRapidDNSReverseIPJSON(data)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if total != 0 || len(out) != 0 {
+		t.Fatalf("unexpected parse result total=%d len=%d", total, len(out))
+	}
+}

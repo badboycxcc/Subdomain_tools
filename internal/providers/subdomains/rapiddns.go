@@ -79,11 +79,14 @@ func (p *RapidDNSProvider) CollectSubdomainRecords(ctx context.Context, rootDoma
 		if err != nil {
 			return nil, err
 		}
+		providers.EmitProviderLog(ctx, fmt.Sprintf("page=%d 响应预览: %s", page, providers.RedactedPreview(body, 300)))
 
 		records, pageTotal, err := parseRapidDNSJSONRecords(body, root)
 		if err != nil {
-			return nil, err
+			providers.EmitProviderLog(ctx, fmt.Sprintf("page=%d 解析失败: %v", page, err))
+			return nil, fmt.Errorf("rapiddns 解析失败(page=%d): %w | preview=%s", page, err, providers.RedactedPreview(body, 300))
 		}
+		providers.EmitProviderLog(ctx, fmt.Sprintf("page=%d 解析成功: records=%d total=%d", page, len(records), pageTotal))
 		out = append(out, records...)
 		if total < 0 {
 			total = pageTotal
@@ -110,16 +113,16 @@ func parseRapidDNSJSON(body []byte, rootDomain string) ([]string, int, error) {
 
 func parseRapidDNSJSONRecords(body []byte, rootDomain string) ([]providers.SubdomainRecord, int, error) {
 	var resp struct {
-		Status int             `json:"status"`
-		Msg    string          `json:"msg"`
+		Status json.RawMessage `json:"status"`
+		Msg    json.RawMessage `json:"msg"`
 		Data   json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, 0, err
 	}
 	if len(resp.Data) == 0 || string(resp.Data) == "null" {
-		if strings.TrimSpace(resp.Msg) != "" {
-			return nil, 0, fmt.Errorf("rapiddns response: %s", strings.TrimSpace(resp.Msg))
+		if msg := parseRapidDNSMsg(resp.Msg); msg != "" {
+			return nil, 0, fmt.Errorf("rapiddns response: %s", msg)
 		}
 		return nil, 0, nil
 	}
@@ -128,8 +131,14 @@ func parseRapidDNSJSONRecords(body []byte, rootDomain string) ([]providers.Subdo
 		var dataMsg string
 		if err := json.Unmarshal(resp.Data, &dataMsg); err == nil {
 			msg := strings.TrimSpace(dataMsg)
+			if strings.EqualFold(msg, "ok") {
+				return nil, 0, nil
+			}
 			if msg == "" {
-				msg = strings.TrimSpace(resp.Msg)
+				msg = parseRapidDNSMsg(resp.Msg)
+			}
+			if strings.EqualFold(msg, "ok") {
+				return nil, 0, nil
 			}
 			if msg != "" {
 				return nil, 0, fmt.Errorf("rapiddns response: %s", msg)
@@ -140,18 +149,34 @@ func parseRapidDNSJSONRecords(body []byte, rootDomain string) ([]providers.Subdo
 
 	var payload struct {
 		Total json.RawMessage `json:"total"`
-		Data  []struct {
-			Subdomain string `json:"subdomain"`
-			Value     string `json:"value"`
-		} `json:"data"`
+		Data  json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(resp.Data, &payload); err != nil {
 		return nil, 0, err
 	}
+	if len(payload.Data) == 0 || string(payload.Data) == "null" {
+		return nil, parseRapidDNSTotal(payload.Total), nil
+	}
+	if payload.Data[0] == '"' {
+		var inner string
+		if err := json.Unmarshal(payload.Data, &inner); err == nil {
+			if strings.EqualFold(strings.TrimSpace(inner), "ok") || strings.TrimSpace(inner) == "" {
+				return nil, parseRapidDNSTotal(payload.Total), nil
+			}
+			return nil, 0, fmt.Errorf("rapiddns response: %s", strings.TrimSpace(inner))
+		}
+	}
+	var records []struct {
+		Subdomain string `json:"subdomain"`
+		Value     string `json:"value"`
+	}
+	if err := json.Unmarshal(payload.Data, &records); err != nil {
+		return nil, 0, err
+	}
 	total := parseRapidDNSTotal(payload.Total)
 	root := strings.ToLower(strings.TrimSpace(rootDomain))
-	out := make([]providers.SubdomainRecord, 0, len(payload.Data))
-	for _, item := range payload.Data {
+	out := make([]providers.SubdomainRecord, 0, len(records))
+	for _, item := range records {
 		host := normalizeHost(item.Subdomain)
 		if host == "" {
 			continue
@@ -165,6 +190,17 @@ func parseRapidDNSJSONRecords(body []byte, rootDomain string) ([]providers.Subdo
 		}
 	}
 	return out, total, nil
+}
+
+func parseRapidDNSMsg(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 func parseRapidDNSTotal(raw json.RawMessage) int {

@@ -142,6 +142,36 @@ func TestParseRapidDNSJSONRecords_DataStringError(t *testing.T) {
 	}
 }
 
+func TestParseRapidDNSJSONRecords_StatusString(t *testing.T) {
+	data := []byte(`{
+		"status":"200",
+		"msg":"ok",
+		"data":{"total":"1","data":[{"subdomain":"a.example.com","value":"1.1.1.1"}]}
+	}`)
+	records, total, err := parseRapidDNSJSONRecords(data, "example.com")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if total != 1 || len(records) != 1 {
+		t.Fatalf("unexpected parse result total=%d len=%d", total, len(records))
+	}
+}
+
+func TestParseRapidDNSJSONRecords_NestedDataStringOk(t *testing.T) {
+	data := []byte(`{
+		"status":"200",
+		"msg":"ok",
+		"data":{"total":"0","status":"ok","data":"ok"}
+	}`)
+	records, total, err := parseRapidDNSJSONRecords(data, "example.com")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if total != 0 || len(records) != 0 {
+		t.Fatalf("unexpected parse result total=%d len=%d", total, len(records))
+	}
+}
+
 func TestParseViewDNSSubdomainsJSONRecords(t *testing.T) {
 	data := []byte(`{
 		"query":{"tool":"subdomains_PRO","domain":"example.com"},

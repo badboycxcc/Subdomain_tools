@@ -77,10 +77,13 @@ func (p *ViewDNSProvider) CollectSubdomainRecords(ctx context.Context, rootDomai
 		if err != nil {
 			return nil, err
 		}
+		providers.EmitProviderLog(ctx, fmt.Sprintf("page=%d 响应预览: %s", page, providers.RedactedPreview(body, 300)))
 		records, pages, err := parseViewDNSSubdomainsJSONRecords(body, root)
 		if err != nil {
-			return nil, err
+			providers.EmitProviderLog(ctx, fmt.Sprintf("page=%d 解析失败: %v", page, err))
+			return nil, fmt.Errorf("viewdns 解析失败(page=%d): %w | preview=%s", page, err, providers.RedactedPreview(body, 300))
 		}
+		providers.EmitProviderLog(ctx, fmt.Sprintf("page=%d 解析成功: records=%d total_pages=%d", page, len(records), pages))
 		out = append(out, records...)
 		if totalPages < 0 {
 			totalPages = pages
